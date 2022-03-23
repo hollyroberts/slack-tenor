@@ -1,7 +1,6 @@
 import json
-import sqlite3
 import os
-import random
+import sqlite3
 from sqlite3 import Connection
 
 import requests
@@ -48,6 +47,7 @@ class Tenor:
             if send_image is None:
                 raise f"Could not get image to send for request {self.block_uid}"
 
+            # language=SQL
             deleted_rows = db.execute("""
                 DELETE FROM tenor_result
                 WHERE id IN (
@@ -71,6 +71,7 @@ class Tenor:
         return self.__record_state_transition(db, 'FETCHED', 'SELECTING')
 
     def __record_state_transition(self, db: Connection, old_status: str, new_status: str):
+        # language=SQL
         return db.execute("""
             UPDATE tenor_result
             SET status = ?
@@ -114,6 +115,7 @@ class Tenor:
             else:
                 pos = None
 
+            # language=SQL
             cursor = db.execute("""
                 INSERT INTO tenor_result (slack_request_id, position, gif_object, status, next_pos)
                 SELECT

@@ -1,7 +1,4 @@
-import contextlib
 import sqlite3
-import os
-from sqlite3 import Connection
 
 class Database:
     __DATABASE_FILE = "database.db"

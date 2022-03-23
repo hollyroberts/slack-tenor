@@ -7,6 +7,7 @@ if os.path.exists("database.db"):
 db = sqlite3.connect("database.db")
 
 # Create tables
+# language=SQL
 db.execute("""
 CREATE TABLE slack_request (
     id              INTEGER     NOT NULL CONSTRAINT pk_slack_request PRIMARY KEY AUTOINCREMENT,
@@ -22,6 +23,7 @@ CREATE TABLE slack_request (
 )
 """)
 
+# language=SQL
 db.execute("""
 CREATE TABLE tenor_result (
     id                  INTEGER     NOT NULL CONSTRAINT pk_tenor_result PRIMARY KEY AUTOINCREMENT,
