@@ -4,13 +4,14 @@ from datetime import datetime
 
 from slack_bolt import App
 
+from blockresults import BlockResults
 from database import Database
 from image import Image
 from tenor_search import Tenor
 
 SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
-PORT = 3456
+PORT = 1302
 
 # Initializes your app with your bot token and signing secret
 app = App(
@@ -18,55 +19,14 @@ app = App(
     signing_secret=SLACK_SIGNING_SECRET
 )
 
-def block_results(block_uid: str, image: Image):
-    return [
-        {
-            "title": {
-                "type": "plain_text",
-                "text": image.get_description()
-            },
-            "type": "image",
-            "image_url": image.get_url(),
-            "alt_text": image.get_description()
-        },
-        {
-            "type": "actions",
-            "block_id": block_uid,
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Send",
-                        "emoji": True
-                    },
-                    "style": "primary",
-                    "value": "Send",
-                    "action_id": "action_send"
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Next",
-                        "emoji": True
-                    },
-                    "value": "Next",
-                    "action_id": "action_next"
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Cancel",
-                        "emoji": True
-                    },
-                    "value": "Cancel",
-                    "action_id": "action_cancel"
-                }
-            ]
-        }
-    ]
+def fetch_request(block_uid: str):
+    with Database() as db:
+        return db.execute("""
+            SELECT * FROM slack_request
+            WHERE block_uid = ?""",
+            (block_uid, )
+        ).fetchone()
+
 
 @app.command(command="/tenor")
 def tenor_search(ack, respond, command):
@@ -74,10 +34,10 @@ def tenor_search(ack, respond, command):
     conversation = command['channel_name']
     user_id = command['user_id']
     username = command['user_name']
-    query_string = command['text']
+    query_str = command['text']
 
     block_uid = str(uuid.uuid4())
-    print(f"Received new request {block_uid} from user '{username} ({user_id}) in channel '{conversation}' ({conversation_id}). Query: {query_string}")
+    print(f"Received new request {block_uid} from user '{username} ({user_id}) in channel '{conversation}' ({conversation_id}). Query: {query_str}")
     ack()
 
     with Database() as db:
@@ -87,23 +47,27 @@ def tenor_search(ack, respond, command):
             user_id,
             conversation_id,
             block_uid,
-            query_string,
+            query_str,
             'SELECTING'
         ))
         if cursor.rowcount != 1:
             raise f"Error creating record. Rowcount: {cursor.rowcount}"
 
     image = Tenor(block_uid).next_image()
-    respond(blocks=block_results(block_uid, image), response_type="ephemeral")
+    results = BlockResults(block_uid, image, user_id, query_str)
+    respond(blocks=results.get_ephemeral_message(), response_type="ephemeral")
 
 @app.action("action_send")
-def send_message(ack, respond, action):
+def send_message(ack, respond, action, context, command):
     block_uid = action.get('block_id')
     print(f"Received send request for {block_uid}")
     ack()
 
+    request = fetch_request(block_uid)
+
     image = Tenor(block_uid).get_send_image_and_delete_others()
-    respond(blocks=block_results(block_uid, image), response_type="in_channel", delete_original=True)
+    results = BlockResults(block_uid, image, request['user_id'], request['search_string'])
+    respond(blocks=results.get_command_post_message(), response_type="in_channel", delete_original=True)
 
 @app.action("action_next")
 def next_message(ack, respond, action):
@@ -111,8 +75,11 @@ def next_message(ack, respond, action):
     print(f"Received next request for {block_uid}")
     ack()
 
+    request = fetch_request(block_uid)
+
     image = Tenor(block_uid).next_image()
-    respond(blocks=block_results(block_uid, image), response_type="ephemeral")
+    results = BlockResults(block_uid, image, request['user_id'], request['search_string'])
+    respond(blocks=results.get_ephemeral_message(), response_type="ephemeral")
 
 @app.action("action_cancel")
 def delete_message(ack, respond, action):
