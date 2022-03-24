@@ -9,7 +9,7 @@ class BlockResults:
 
     def get_ephemeral_message(self):
         return [
-            self.__get_image(),
+            self.__get_image(add_description=True),
             self.__get_action_buttons()
         ]
 
@@ -28,15 +28,22 @@ class BlockResults:
             },
         }
 
-    def __get_image(self):
+    def __get_image(self, add_description=False):
         description = self.image.get_description()
         description = description.removesuffix(" GIF")
 
-        return {
+        ret = {
             "type": "image",
             "image_url": self.image.get_url(),
             "alt_text": description
         }
+        if add_description:
+            ret["title"] = {
+                "type": "plain_text",
+                "text": description
+            }
+
+        return ret
 
     def __get_action_buttons(self):
         return {

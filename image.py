@@ -7,6 +7,9 @@ class Image:
     def get_description(self):
         return self.__json['content_description']
 
+    def get_id(self):
+        return self.__json['id']
+
     def get_url(self):
         media = self.__json['media'][0]
         items = {k: v for (k, v) in media.items() if v['size'] < Image.MAX_IMAGE_SIZE and k.endswith('gif')}

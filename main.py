@@ -1,3 +1,4 @@
+import argparse
 import os
 import uuid
 from datetime import datetime
@@ -9,24 +10,25 @@ from database import Database
 from image import Image
 from tenor_search import Tenor
 
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
-SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
-PORT = 1302
+# Argparse
+parser = argparse.ArgumentParser(description="Post messages to slack if a cryptocurrency has changed price significantly")
+parser.add_argument("slack bot token",
+                    help="Slack Bot Token")
+parser.add_argument("slack signing secret",
+                    help="Slack Signing Secret")
+parser.add_argument("tenor api key",
+                    help="Tenor API Key")
+parser.add_argument("--port", "-p", default=1300, type=int,
+                    help="Port for slash commands + actions")
+args = parser.parse_args()
+
 
 # Initializes your app with your bot token and signing secret
+Tenor.TENOR_API_KEY = getattr(args, "tenor api key")
 app = App(
-    token=SLACK_BOT_TOKEN,
-    signing_secret=SLACK_SIGNING_SECRET
+    token=getattr(args, "slack bot token"),
+    signing_secret=getattr(args, "slack signing secret")
 )
-
-def fetch_request(block_uid: str):
-    with Database() as db:
-        return db.execute("""
-            SELECT * FROM slack_request
-            WHERE block_uid = ?""",
-            (block_uid, )
-        ).fetchone()
-
 
 @app.command(command="/tenor")
 def tenor_search(ack, respond, command):
@@ -63,11 +65,14 @@ def send_message(ack, respond, action, context, command):
     print(f"Received send request for {block_uid}")
     ack()
 
-    request = fetch_request(block_uid)
+    tenor = Tenor(block_uid)
+    request = tenor.fetch_request()
 
-    image = Tenor(block_uid).get_send_image_and_delete_others()
+    image = tenor.get_send_image_and_delete_others()
     results = BlockResults(block_uid, image, request['user_id'], request['search_string'])
     respond(blocks=results.get_command_post_message(), response_type="in_channel", delete_original=True)
+
+    tenor.register_image_as_shared(image)
 
 @app.action("action_next")
 def next_message(ack, respond, action):
@@ -75,9 +80,10 @@ def next_message(ack, respond, action):
     print(f"Received next request for {block_uid}")
     ack()
 
-    request = fetch_request(block_uid)
+    tenor = Tenor(block_uid)
+    request = tenor.fetch_request()
 
-    image = Tenor(block_uid).next_image()
+    image = tenor.next_image()
     results = BlockResults(block_uid, image, request['user_id'], request['search_string'])
     respond(blocks=results.get_ephemeral_message(), response_type="ephemeral")
 
@@ -102,4 +108,4 @@ def delete_message(ack, respond, action):
 
 # Start your app
 if __name__ == "__main__":
-    app.start(port=PORT, path="/tenor")
+    app.start(port=args.port, path="/tenor")

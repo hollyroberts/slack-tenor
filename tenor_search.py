@@ -10,8 +10,9 @@ from image import Image
 
 
 class Tenor:
-    TENOR_API_KEY = os.environ.get("TENOR_API_KEY")
+    TENOR_API_KEY = None
     TENOR_SEARCH_URL = "https://g.tenor.com/v1/random"
+    TENOR_REGISTER_SHARE_URL = "https://g.tenor.com/v1/registershare"
     TENOR_LOCALE = "en_GB"
 
     LIMIT = 5
@@ -19,6 +20,9 @@ class Tenor:
     db = sqlite3.connect("database.db")
 
     def __init__(self, block_uid):
+        if Tenor.TENOR_API_KEY is None:
+            raise "Tenor API Key not set"
+
         self.block_uid = block_uid
 
     def next_image(self):
@@ -59,6 +63,25 @@ class Tenor:
                 """, (self.block_uid, )).rowcount
             print(f"Deleted {deleted_rows} unused requests for request {self.block_uid}")
             return Tenor.__unpack_gif_object_from_db(send_image)
+
+    def register_image_as_shared(self, image: Image):
+        # Try to register share on tenor
+        request = self.fetch_request()
+        requests.get(Tenor.TENOR_REGISTER_SHARE_URL, params={
+            "id": image.get_id(),
+            "key": Tenor.TENOR_API_KEY,
+            "q": request['search_string'],
+            "locale": Tenor.TENOR_LOCALE,
+        })
+        print(f"Registered image {image.get_id()} as shared in tenor for request {self.block_uid}")
+
+    def fetch_request(self):
+        with Database() as db:
+            return db.execute("""
+                SELECT * FROM slack_request
+                WHERE block_uid = ?""",
+              (self.block_uid,)
+              ).fetchone()
 
     @staticmethod
     def __unpack_gif_object_from_db(db_result):
