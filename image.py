@@ -1,3 +1,5 @@
+import logging
+
 class Image:
     MAX_IMAGE_SIZE = 2 * (1024**2)
 
@@ -15,5 +17,5 @@ class Image:
         items = {k: v for (k, v) in media.items() if v['size'] < Image.MAX_IMAGE_SIZE and k.endswith('gif')}
         item = sorted(items.items(), key=lambda it: -it[1]['size'])[0]
 
-        print(f"Selected type: {item[0]} of size {item[1]['size']:,} bytes")
+        logging.info(f"Selected type: {item[0]} of size {item[1]['size']:,} bytes")
         return item[1]['url']

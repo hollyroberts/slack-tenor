@@ -1,13 +1,13 @@
 import json
+import logging
 import os
 import sqlite3
-from sqlite3 import Connection
+from sqlite3 import Connection, DatabaseError
 
 import requests
 
 from database import Database
 from image import Image
-
 
 class Tenor:
     TENOR_API_KEY = None
@@ -21,7 +21,7 @@ class Tenor:
 
     def __init__(self, block_uid):
         if Tenor.TENOR_API_KEY is None:
-            raise "Tenor API Key not set"
+            raise RuntimeError("Tenor API Key not set")
 
         self.block_uid = block_uid
 
@@ -30,18 +30,18 @@ class Tenor:
             previous_image = self.__set_image_as_used_and_get(db)
             next_image = self.__next_image_from_db(db)
             if next_image is None:
-                print(f"No more images stored for request {self.block_uid}")
+                logging.info(f"No more images stored for request {self.block_uid}")
 
                 pos = None
                 if previous_image is not None:
                     pos = previous_image['next_pos']
                     if pos is None:
-                        raise f"Had a previous gif without next position for request {self.block_uid}. " \
-                                f"Previous image id: {previous_image['id']}"
+                        raise DatabaseError(f"Had a previous gif without next position for request {self.block_uid}. " +
+                                            f"Previous image id: {previous_image['id']}")
                 self.__query_tenor(db, pos)
                 next_image = self.__next_image_from_db(db)
                 if next_image is None:
-                    raise f"Tried fetching more images, but could not fetch more from the DB"
+                    raise DatabaseError(f"Tried fetching more images, but could not fetch more from the DB")
 
             return Tenor.__unpack_gif_object_from_db(next_image)
 
@@ -49,7 +49,7 @@ class Tenor:
         with Database() as db:
             send_image = self.__set_image_as_used_and_get(db)
             if send_image is None:
-                raise f"Could not get image to send for request {self.block_uid}"
+                raise DatabaseError(f"Could not get image to send for request {self.block_uid}")
 
             # language=SQL
             deleted_rows = db.execute("""
@@ -60,28 +60,32 @@ class Tenor:
                     WHERE block_uid = ?
                     AND tr.status = 'FETCHED'
                 )
-                """, (self.block_uid, )).rowcount
-            print(f"Deleted {deleted_rows} unused requests for request {self.block_uid}")
+                """, (self.block_uid,)).rowcount
+            logging.info(f"Deleted {deleted_rows} unused requests for request {self.block_uid}")
             return Tenor.__unpack_gif_object_from_db(send_image)
 
     def register_image_as_shared(self, image: Image):
         # Try to register share on tenor
         request = self.fetch_request()
-        requests.get(Tenor.TENOR_REGISTER_SHARE_URL, params={
-            "id": image.get_id(),
-            "key": Tenor.TENOR_API_KEY,
-            "q": request['search_string'],
-            "locale": Tenor.TENOR_LOCALE,
-        })
-        print(f"Registered image {image.get_id()} as shared in tenor for request {self.block_uid}")
+        try:
+            requests.get(Tenor.TENOR_REGISTER_SHARE_URL, params={
+                "id": image.get_id(),
+                "key": Tenor.TENOR_API_KEY,
+                "q": request['search_string'],
+                "locale": Tenor.TENOR_LOCALE,
+            })
+        except Exception as e:
+            logging.error(f"Error registering image {image.get_id()} as shared in tenor for request {self.block_uid}", e)
+
+        logging.info(f"Registered image {image.get_id()} as shared in tenor for request {self.block_uid}")
 
     def fetch_request(self):
         with Database() as db:
             return db.execute("""
                 SELECT * FROM slack_request
                 WHERE block_uid = ?""",
-              (self.block_uid,)
-              ).fetchone()
+                              (self.block_uid,)
+                              ).fetchone()
 
     @staticmethod
     def __unpack_gif_object_from_db(db_result):
@@ -114,13 +118,13 @@ class Tenor:
             WHERE id = ?
             """, (new_status, row_id))
         # language=SQL
-        return db.execute("SELECT * FROM tenor_result WHERE id = ?", (row_id, )).fetchone()
+        return db.execute("SELECT * FROM tenor_result WHERE id = ?", (row_id,)).fetchone()
 
     def __query_tenor(self, db: Connection, next_pos):
-        search_string = db.execute("SELECT search_string FROM slack_request WHERE block_uid = ?", (self.block_uid, ))\
+        search_string = db.execute("SELECT search_string FROM slack_request WHERE block_uid = ?", (self.block_uid,)) \
             .fetchone()['search_string']
 
-        print(f"Fetching results from tenor for request {self.block_uid} with query string: {search_string}")
+        logging.info(f"Fetching results from tenor for request {self.block_uid} with query string: {search_string}")
         resp = requests.get(Tenor.TENOR_SEARCH_URL, params={
             "key": Tenor.TENOR_API_KEY,
             "q": search_string,
@@ -131,13 +135,13 @@ class Tenor:
             "pos": next_pos
         })
         if not resp.ok:
-            raise f"Got status code {resp.status_code} for tenor request"
+            raise RuntimeError(f"Got status code {resp.status_code} for tenor request")
 
         content = json.loads(resp.content)
         next_pos = content['next']
         results = content['results']
 
-        print(f"Fetched {len(results)} from tenor for request {self.block_uid}")
+        logging.info(f"Fetched {len(results)} from tenor for request {self.block_uid}")
 
         for i, obj in enumerate(results, start=0):
             if i + 1 == len(results):
@@ -160,6 +164,6 @@ class Tenor:
                 GROUP BY sr.id
                 """, (json.dumps(results[i]), pos, self.block_uid))
             if cursor.rowcount != 1:
-                raise f"Error inserting row for request {self.block_uid}"
+                raise DatabaseError(f"Error inserting row for request {self.block_uid}")
 
-        print(f"Inserted rows for request {self.block_uid}")
+        logging.info(f"Inserted rows for request {self.block_uid}")
