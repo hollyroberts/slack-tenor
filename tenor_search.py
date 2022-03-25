@@ -95,19 +95,26 @@ class Tenor:
 
     def __record_state_transition(self, db: Connection, old_status: str, new_status: str):
         # language=SQL
-        return db.execute("""
+        row = db.execute("""
+            SELECT tr.id FROM tenor_result tr
+            INNER JOIN slack_request sr ON (tr.slack_request_id = sr.id)
+            WHERE sr.block_uid = ?
+            AND tr.status = ?
+            ORDER BY position ASC
+            LIMIT 1
+            """, (self.block_uid, old_status)).fetchone()
+        if row is None:
+            return None
+        row_id = row['id']
+
+        # language=SQL
+        db.execute("""
             UPDATE tenor_result
             SET status = ?
-            WHERE id = (
-                SELECT tr.id FROM tenor_result tr
-                INNER JOIN slack_request sr ON (tr.slack_request_id = sr.id)
-                WHERE sr.block_uid = ?
-                AND tr.status = ?
-                ORDER BY position ASC
-                LIMIT 1
-            )
-            RETURNING *
-            """, (new_status, self.block_uid, old_status)).fetchone()
+            WHERE id = ?
+            """, (new_status, row_id))
+        # language=SQL
+        return db.execute("SELECT * FROM tenor_result WHERE id = ?", (row_id, )).fetchone()
 
     def __query_tenor(self, db: Connection, next_pos):
         search_string = db.execute("SELECT search_string FROM slack_request WHERE block_uid = ?", (self.block_uid, ))\
