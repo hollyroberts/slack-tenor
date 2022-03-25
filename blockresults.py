@@ -30,7 +30,7 @@ class BlockResults:
 
     def __get_image(self, add_description=False):
         description = self.image.get_description()
-        description = description.removesuffix(" GIF")
+        description = BlockResults.__strip_end(description, " GIF")
 
         ret = {
             "type": "image",
@@ -83,3 +83,9 @@ class BlockResults:
                 }
             ]
         }
+
+    @staticmethod
+    def __strip_end(text, suffix):
+        if text.upper().endswith(suffix.upper()):
+            return text[:-len(suffix)]
+        return text
