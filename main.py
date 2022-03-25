@@ -30,6 +30,14 @@ app = App(
     signing_secret=getattr(args, "slack signing secret")
 )
 
+@app.error
+def error_handler(error, body, logger, respond):
+    logger.exception(f"Error: {error}")
+    logger.info(f"Request body: {body}")
+
+    if respond is not None:
+        respond("Encountered an error processing request. Please contact AgentKay for help", replace_original=False, response_type="ephemeral")
+
 @app.command(command="/tenor")
 def tenor_search(ack, respond, command):
     conversation_id = command['channel_id']
