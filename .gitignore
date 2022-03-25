@@ -164,3 +164,4 @@ dmypy.json
 #############
 database.db
 database.sqbpro
+log_slack_tenor
