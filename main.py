@@ -60,7 +60,7 @@ def tenor_search(ack, respond, command):
     query_str = command['text']
 
     block_uid = str(uuid.uuid4())
-    logging.info(f"Received new request {block_uid} from user '{username} ({user_id}) in channel '{conversation}' ({conversation_id}). Query: {query_str}")
+    logging.info(f"Received new request {block_uid} from user '{username}' ({user_id}) in channel '{conversation}' ({conversation_id}). Query: {query_str}")
     ack()
 
     with Database() as db:
