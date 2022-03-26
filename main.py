@@ -81,7 +81,7 @@ def tenor_search(ack, respond, command):
     respond(blocks=results.get_ephemeral_message(), response_type="ephemeral")
 
 @app.action("action_send")
-def send_message(ack, respond, action, context, command):
+def send_message(ack, respond, action):
     block_uid = action.get('block_id')
     logging.info(f"Received send request for {block_uid}")
     ack()
@@ -93,6 +93,17 @@ def send_message(ack, respond, action, context, command):
     results = BlockResults(block_uid, image, request['user_id'], request['search_string'])
     respond(blocks=results.get_command_post_message(), response_type="in_channel", delete_original=True)
 
+    with Database() as db:
+        cursor = db.execute("""
+            UPDATE slack_request
+            SET status = 'POSTED'
+            WHERE block_uid = ?""",
+            (block_uid, )
+        )
+        if cursor.rowcount == 1:
+            logging.info(f"Set message {block_uid} as posted")
+        else:
+            raise DatabaseError(f"Error updating status. Rowcount: {cursor.rowcount}")
     tenor.register_image_as_shared(image)
 
 @app.action("action_next")
